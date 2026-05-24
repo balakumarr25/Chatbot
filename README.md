@@ -49,11 +49,17 @@ A production-grade system for capturing, storing, and visualizing LLM inference 
 ## Quick Start (Docker — one command)
 
 ```bash
-# 1. Clone and configure
-cp .env.example .env
-# Edit .env and add at least one API key
+# 1. Clone
+git clone https://github.com/balakumarr25/Chatbot.git
+cd Chatbot
 
-# 2. Start everything
+# 2. Create your .env file
+cp .env.example .env
+
+# 3. Add your HuggingFace API key (free at https://huggingface.co/settings/tokens)
+#    Edit .env and set:  HUGGINGFACE_API_KEY=hf_...
+
+# 4. Start everything
 docker compose up --build
 
 # Services:
