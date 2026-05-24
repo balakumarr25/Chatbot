@@ -1,0 +1,101 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: llm_postgres
+    environment:
+      POSTGRES_USER: llmuser
+      POSTGRES_PASSWORD: llmpassword
+      POSTGRES_DB: llmlogs
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./ingestion/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmuser -d llmlogs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: llm_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ingestion:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    container_name: llm_ingestion
+    environment:
+      DATABASE_URL: postgresql+asyncpg://llmuser:llmpassword@postgres:5432/llmlogs
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: supersecretkey-change-in-production
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./ingestion:/app
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile.worker
+    container_name: llm_worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://llmuser:llmpassword@postgres:5432/llmlogs
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  chatbot:
+    build:
+      context: ./chatbot
+      dockerfile: Dockerfile
+    container_name: llm_chatbot
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+      INGESTION_API_URL: http://ingestion:8000
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ingestion
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_INGESTION_API_URL: http://localhost:8000
+    container_name: llm_dashboard
+    ports:
+      - "3001:3001"
+    depends_on:
+      - ingestion
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

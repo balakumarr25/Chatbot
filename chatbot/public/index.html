@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Chatbot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/marked@12.0.0/marked.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .prose pre  { background:#1e1e2e; color:#cdd6f4; padding:1rem; border-radius:.5rem; overflow-x:auto; }
+    .prose code { background:#313244; padding:.1em .3em; border-radius:.25rem; font-size:.875em; }
+    .prose pre code { background:none; padding:0; }
+    .msg p { margin-bottom:.4rem; } .msg p:last-child { margin-bottom:0; }
+    .cursor::after { content:'▋'; animation:blink .8s step-end infinite; }
+    @keyframes blink { 50%{opacity:0} }
+    ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:#4b5563;border-radius:3px}
+    .crow:hover{background:rgba(255,255,255,.05)} .crow.active{background:rgba(99,102,241,.2);border-left:2px solid #6366f1}
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 h-screen flex overflow-hidden">
+
+<aside class="w-64 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0">
+  <div class="p-4 border-b border-gray-800">
+    <div class="flex items-center gap-2 mb-3">
+      <div class="w-7 h-7 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm">L</div>
+      <span class="font-semibold text-sm">LLM Chat</span>
+    </div>
+    <button onclick="newChat()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm py-2 px-3 rounded-lg flex items-center justify-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      New Chat
+    </button>
+  </div>
+  <div class="p-3 border-b border-gray-800 space-y-2">
+    <div>
+      <label class="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Provider</label>
+      <select id="prov" onchange="updateModels()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500">
+        <option>Loading…</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Model</label>
+      <select id="mdl" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500">
+        <option>—</option>
+      </select>
+    </div>
+  </div>
+  <div class="flex-1 overflow-y-auto p-2">
+    <p class="text-xs text-gray-500 uppercase tracking-wide px-2 py-1 mb-1">History</p>
+    <div id="clist"></div>
+  </div>
+  <div class="p-3 border-t border-gray-800">
+    <a href="http://localhost:3001" target="_blank" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      Dashboard
+    </a>
+  </div>
+</aside>
+
+<div class="flex-1 flex flex-col min-w-0">
+  <div class="border-b border-gray-800 px-6 py-3 flex items-center justify-between bg-gray-900/50 flex-shrink-0">
+    <div>
+      <h1 id="ttl" class="font-medium text-sm">New Conversation</h1>
+      <p id="sub" class="text-xs text-gray-500">Select a model to start</p>
+    </div>
+    <span id="badge" class="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">idle</span>
+  </div>
+
+  <div id="msgs" class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+    <div id="empty" class="flex flex-col items-center justify-center h-full text-center">
+      <div class="w-16 h-16 bg-indigo-900/30 rounded-2xl flex items-center justify-center mb-4">
+        <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+      </div>
+      <h2 class="text-lg font-medium text-gray-300 mb-1">Start a conversation</h2>
+      <p class="text-sm text-gray-500">Pick a model and type a message</p>
+    </div>
+  </div>
+
+  <div class="border-t border-gray-800 p-4 bg-gray-900/30 flex-shrink-0">
+    <div class="flex gap-3 items-end max-w-4xl mx-auto">
+      <textarea id="inp" rows="1" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+        class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none min-h-[48px] max-h-[200px]"></textarea>
+      <button id="sbtn" onclick="sendMsg()" class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white p-3 rounded-xl transition-colors flex-shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+marked.setOptions({ breaks: true, gfm: true });
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const SID = localStorage.getItem('sid') || crypto.randomUUID();
+localStorage.setItem('sid', SID);
+
+let convId   = null;
+let history  = [];   // [{role, content}]
+let busy     = false;
+let allProviders = [];
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await fetch('/api/providers');
+    allProviders = await r.json();
+  } catch(e) {
+    allProviders = [];
+    console.error('Failed to load providers', e);
+  }
+
+  const pSel = document.getElementById('prov');
+  if (!allProviders.length) {
+    pSel.innerHTML = '<option value="">No providers configured</option>';
+    return;
+  }
+  pSel.innerHTML = allProviders.map(p =>
+    `<option value="${p.provider}">${p.provider}</option>`
+  ).join('');
+
+  // Default to huggingface
+  const hf = allProviders.find(p => p.provider === 'huggingface');
+  if (hf) pSel.value = 'huggingface';
+  updateModels();
+  loadConvs();
+});
+
+// ── Provider / Model ──────────────────────────────────────────────────────────
+function updateModels() {
+  const pv = document.getElementById('prov').value;
+  const p  = allProviders.find(x => x.provider === pv);
+  const sel = document.getElementById('mdl');
+  sel.innerHTML = p
+    ? p.models.map(m => `<option value="${m}">${m}</option>`).join('')
+    : '<option value="">—</option>';
+}
+
+// ── Conversations ─────────────────────────────────────────────────────────────
+async function loadConvs() {
+  try {
+    const r = await fetch('/api/conversations?sessionId=' + SID);
+    const list = await r.json();
+    renderConvs(list);
+  } catch { renderConvs([]); }
+}
+
+function renderConvs(list) {
+  const el = document.getElementById('clist');
+  if (!list.length) {
+    el.innerHTML = '<p class="text-xs text-gray-600 px-2 py-1">No conversations yet</p>';
+    return;
+  }
+  el.innerHTML = list.map(c => `
+    <div class="crow rounded-lg px-2 py-2 cursor-pointer group ${c.id===convId?'active':''}"
+         onclick="resumeConv('${c.id}')">
+      <div class="flex items-center gap-1">
+        <span class="text-xs text-gray-300 truncate flex-1">${esc(c.title||'Untitled')}</span>
+        ${c.status==='active'
+          ? `<button onclick="event.stopPropagation();cancelConv('${c.id}')"
+               class="opacity-0 group-hover:opacity-100 text-red-400 text-xs px-1">✕</button>`
+          : ''}
+      </div>
+      <div class="flex gap-1 mt-0.5">
+        <span class="text-xs text-gray-600 truncate">${c.provider} · ${c.model.split('/').pop().split('-').slice(0,2).join('-')}</span>
+        <span class="text-xs ml-auto ${c.status==='active'?'text-green-600':c.status==='cancelled'?'text-red-600':'text-gray-600'}">${c.status}</span>
+      </div>
+    </div>`).join('');
+}
+
+async function cancelConv(id) {
+  await fetch(`/api/conversations/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'cancelled' })
+  }).catch(() => {});
+  loadConvs();
+}
+
+async function resumeConv(id) {
+  convId = id; history = [];
+  const [convs, msgs] = await Promise.all([
+    fetch('/api/conversations').then(r => r.json()).catch(() => []),
+    fetch(`/api/conversations/${id}/messages`).then(r => r.json()).catch(() => [])
+  ]);
+  const c = convs.find(x => x.id === id);
+  if (c) {
+    document.getElementById('ttl').textContent = c.title || 'Conversation';
+    document.getElementById('sub').textContent = `${c.provider} · ${c.model}`;
+    const pSel = document.getElementById('prov');
+    if ([...pSel.options].some(o => o.value === c.provider)) {
+      pSel.value = c.provider;
+      updateModels();
+      document.getElementById('mdl').value = c.model;
+    }
+  }
+  const msgsEl = document.getElementById('msgs');
+  msgsEl.innerHTML = '';
+  msgs.forEach(m => {
+    history.push({ role: m.role, content: m.content });
+    addBubble(m.role, m.content);
+  });
+  if (!msgs.length) msgsEl.innerHTML = emptyHTML();
+  loadConvs();
+}
+
+function newChat() {
+  convId = null; history = [];
+  document.getElementById('msgs').innerHTML = emptyHTML();
+  document.getElementById('ttl').textContent = 'New Conversation';
+  document.getElementById('sub').textContent = 'Select a model to start';
+  loadConvs();
+}
+
+// ── Send message ──────────────────────────────────────────────────────────────
+async function sendMsg() {
+  if (busy) return;
+
+  const text     = document.getElementById('inp').value.trim();
+  const provider = document.getElementById('prov').value;
+  const model    = document.getElementById('mdl').value;
+
+  if (!text)     { return; }
+  if (!provider) { alert('Select a provider'); return; }
+  if (!model)    { alert('Select a model'); return; }
+
+  // Create conversation on first message
+  if (!convId) {
+    try {
+      const r = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: SID, provider, model, title: text.slice(0, 50) })
+      });
+      const d = await r.json();
+      convId = d.id;
+    } catch(e) { console.warn('Could not create conversation', e); }
+    document.getElementById('ttl').textContent = text.slice(0, 50);
+    document.getElementById('sub').textContent = `${provider} · ${model}`;
+  }
+
+  // Clear input
+  const inp = document.getElementById('inp');
+  inp.value = '';
+  inp.style.height = 'auto';
+
+  // Remove empty state
+  const emptyEl = document.getElementById('empty');
+  if (emptyEl) emptyEl.remove();
+
+  // Add user bubble
+  history.push({ role: 'user', content: text });
+  addBubble('user', text);
+
+  // Show thinking
+  setBusy(true);
+  const thinkBubble = addBubble('assistant', '…', false, true);
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages:       history.slice(),   // full history including latest user msg
+        provider:       provider,
+        model:          model,
+        sessionId:      SID,
+        conversationId: convId
+      })
+    });
+
+    const data = await resp.json();
+
+    // Remove thinking bubble
+    thinkBubble.remove();
+
+    if (!resp.ok || data.error) {
+      addBubble('assistant', `**Error:** ${data.error || 'Request failed'}`);
+      setBusy(false, 'error');
+      return;
+    }
+
+    history.push({ role: 'assistant', content: data.content });
+    addBubble('assistant', data.content);
+    setBusy(false);
+    loadConvs();
+
+  } catch(e) {
+    thinkBubble.remove();
+    addBubble('assistant', `**Network error:** ${e.message}`);
+    setBusy(false, 'error');
+    console.error(e);
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function addBubble(role, content, _unused, thinking = false) {
+  const msgsEl = document.getElementById('msgs');
+  const wrap   = document.createElement('div');
+  wrap.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} gap-3`;
+
+  if (role === 'user') {
+    wrap.innerHTML = `
+      <div class="max-w-[80%] bg-indigo-600 rounded-2xl rounded-tr-sm px-4 py-3">
+        <p class="text-sm text-white whitespace-pre-wrap">${esc(content)}</p>
+      </div>`;
+  } else {
+    const inner = thinking
+      ? '<span class="text-gray-400 text-sm animate-pulse">Thinking…</span>'
+      : `<div class="msg prose prose-invert prose-sm max-w-none text-gray-100">${marked.parse(content)}</div>`;
+    wrap.innerHTML = `
+      <div class="w-7 h-7 rounded-lg bg-indigo-900/50 flex items-center justify-center flex-shrink-0 mt-0.5 text-indigo-400">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+      </div>
+      <div class="max-w-[80%] bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">${inner}</div>`;
+  }
+
+  msgsEl.appendChild(wrap);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return wrap;
+}
+
+function setBusy(state, status) {
+  busy = state;
+  document.getElementById('sbtn').disabled = state;
+  const s = status || (state ? 'thinking' : 'idle');
+  const colors = {
+    thinking: 'bg-yellow-900/30 text-yellow-400',
+    idle:     'bg-gray-800 text-gray-400',
+    error:    'bg-red-900/30 text-red-400',
+  };
+  const b = document.getElementById('badge');
+  b.textContent = s;
+  b.className = `text-xs px-2 py-0.5 rounded-full ${colors[s] || colors.idle}`;
+}
+
+function emptyHTML() {
+  return `<div id="empty" class="flex flex-col items-center justify-center h-full text-center">
+    <div class="w-16 h-16 bg-indigo-900/30 rounded-2xl flex items-center justify-center mb-4">
+      <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+      </svg>
+    </div>
+    <h2 class="text-lg font-medium text-gray-300 mb-1">Start a conversation</h2>
+    <p class="text-sm text-gray-500">Pick a model and type a message</p>
+  </div>`;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('inp').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
+  document.getElementById('inp').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+  });
+});
+
+setInterval(loadConvs, 30000);
+</script>
+</body>
+</html>
